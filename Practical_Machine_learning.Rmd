@@ -1,0 +1,126 @@
+---
+title: "Practical Machine Learing"
+author: "Dhiraj Deshmukh"
+date: "October 15, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Required libraries
+```{r}
+library(knitr)
+library(rpart)
+library(randomForest)
+library(rpart.plot)
+library(rattle)
+library(caret)
+library(gridExtra)
+library(RColorBrewer)
+```
+# Getting and loading data
+```{r}
+set.seed(12345)
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+```
+# Cleaning the data set
+#### Provided data has many variables with missing data and the information that is not required for this project. Relevant variables are extracted using pattern recognition for relevant strings, leaving 52 variables.
+## Cleaning up Training Data Set
+```{r}
+trainingaccel<-grepl("^accel",names(training))
+trainingtotal<-grepl("^total",names(training))
+roll<-grepl("^roll",names(training))
+pitch<-grepl("^pitch",names(training))
+yaw<-grepl("^yaw",names(training))
+magnet<-grepl("^magnet",names(training))
+gyro<-grepl("^gyro",names(training))
+acceldata<-training[ ,trainingaccel]
+rolldata<-training[ ,roll]
+pitchdata<-training[ ,pitch]
+yawdata<-training[,yaw]
+magnetdata<-training[,magnet]
+gyrodata<-training[,gyro]
+totaldata<-training[,trainingtotal]
+trainClasse<-cbind(acceldata,rolldata,pitchdata,yawdata,magnetdata,gyrodata,totaldata,training[ ,160])
+colnames(trainClasse)[53]<-'Classe'
+``` 
+##  Cleaning up Testing Data Set
+```{r}
+testingaccel<-grepl("^accel",names(testing))
+testingtotal<-grepl("^total",names(testing))
+troll<-grepl("^roll",names(testing))
+tpitch<-grepl("^pitch",names(testing))
+tyaw<-grepl("^yaw",names(testing))
+tmagnet<-grepl("^magnet",names(testing))
+tgyro<-grepl("^gyro",names(testing))
+tacceldata<-testing[ ,testingaccel]
+trolldata<-testing[ ,troll]
+tpitchdata<-testing[,tpitch]
+tyawdata<-testing[,tyaw]
+tmagnetdata<-testing[,tmagnet]
+tgyrodata<-testing[,tgyro]
+ttotaldata<-testing[,testingtotal]
+testClasse<-cbind(tacceldata,trolldata,tpitchdata,tyawdata,tmagnetdata,tgyrodata,ttotaldata,testing[ ,160])
+colnames(testClasse)[53]<-'problem.id'
+```
+# Create Training & Testing Data Subset
+#### A training subset is created with 60% of original training data set to be used for training
+#### and remaining 40% to be used for testing.
+```{r}
+set.seed(400)
+inTrain = createDataPartition(trainClasse$Classe, p = .60)[[1]]
+trainingsubset = trainClasse[ inTrain,]
+testingsubset = trainClasse[-inTrain,]
+```
+# rpart Model
+### Decision tree, the first model tested using rpart
+```{r}
+set.seed(400)
+modFit<-train(Classe~.,method="rpart", data=trainingsubset)
+print(modFit$finalModel)
+fancyRpartPlot(modFit$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+classepredict=predict(modFit,testingsubset)
+confusionMatrix(testingsubset$Classe,classepredict)
+```
+#### Rpart model shows that it is 54.6% accurate only. oll_belt, pitch_forearm, yaw_belt,magnet_dumbbell_Z,pitch_belt, and magnet_dumbell_x are the variables used in the algorithm. And the model is least accurate for outcome D.
+# Random Forest Model
+#### As we have seen that the rpart model wasnt that accurate, next Random forest model will be used to see how accurate it fits the data into.
+```{r}
+set.seed(400)
+modFit2 <- train(Classe ~ ., method="rf",trControl=trainControl(method = "cv", number = 4), data=trainingsubset)
+print(modFit2)
+varImp(modFit2)
+classepredict2=predict(modFit2,testingsubset)
+confusionMatrix(testingsubset$Classe,classepredict2)
+```
+#### Random forest model found to be more accurate, around 99.2%, than the rpart model. The most important variables includes roll_belt, yaw_belt,magnet_dumbbell_z,magnet_dumbbell_y, and  pitch_forearm. Though it is least accurate model C.
+#### Using qplot the more detailed graph is shown compared to rpart model.
+```{r}
+p1<-qplot(roll_belt,yaw_belt,colour=Classe,data=trainingsubset)
+p2<-qplot(roll_belt,pitch_forearm,colour=Classe,data=trainingsubset)
+grid.arrange(p1,p2,ncol=2) 
+dev.off()
+```
+# Sample Out Of Error 
+```{r}
+insamplepredict=predict(modFit2,trainingsubset)
+confusionMatrix(trainingsubset$Classe,insamplepredict)
+```
+#### It is shown how the model shows the accuracy of99.2% when used with different data set
+```{r}
+classepredict2=predict(modFit2,testingsubset)
+confusionMatrix(testingsubset$Classe,classepredict2)
+```
+#### It is noticeable to see that the model returns with 100% accuracy when used the original testing data set. So we will preditct the data next for 20 cases.
+```{r}
+testinganswers=predict(modFit2, newdata=testing)
+print(testinganswers)
+```
+#### Please note that all samples were taken from one larger sample. And the data that was collected, if it is collected again, it is possible that the out of sample erroe could be higher. As this is the data set for 6 people only, so it can not be generalised for the whole population. 
+# Summary
+#### Random Forest Model was better than the Rpart Model. It was 99.2% accurate and fitted well with the data set, but algorithm may not be that accurate. In Rpart model, D was most difficult to predict and in Random Forest, C was hard to predict. It is fun to see how the exercise and its quality can change the monitors and the monitors can predict the errors made during the exercise. So it can be concluded as the most important model which measures and analyze the quality of exercise and can help people to make their health better.
